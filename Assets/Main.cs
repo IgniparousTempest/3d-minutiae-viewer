@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization.Formatters.Binary;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -44,10 +45,16 @@ public class Main : MonoBehaviour {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             int xi, yi;
             float zi;
-            GameObject point = GetPositionOnSurface(ray, pointCloud, Camera.main.transform.position, out xi, out yi, out zi);
 
             if (tool == Tools.MINUTIAE_3D)
             {
+                GameObject point = GetPositionOnSurface(ray, pointCloud, Camera.main.transform.position, out xi, out yi, out zi);
+                if (point == null)
+                {
+                    Debug.LogWarning("Couldn't place minutiae.");
+                    isEditing = false;
+                    return;
+                }
                 currentFeature = Instantiate(minutiaePrefab, point.transform.position, Quaternion.identity);
                 currentFeature.transform.localScale = point.transform.localScale;
                 Minutiae3D minutiae = currentFeature.GetComponent<Minutiae3D>();
@@ -103,52 +110,47 @@ public class Main : MonoBehaviour {
         xIndex = 0;
         yIndex = 0;
         zIndex = 0;
-        RenderedCloudContainer container = pointCloudContainer.GetComponent<RenderedCloudContainer>();
         // TODO: Need a KD Tree or something to speed up this O(n^2) solution:
-        Vector3 p00 = container.GetPointObject(0, 0).transform.position;
-        Vector3 p11 = container.GetPointObject(1, 1).transform.position;
+        Vector3 p00 = cloudContainer.GetPointObject(0, 0).transform.position;
+        Vector3 p11 = cloudContainer.GetPointObject(1, 1).transform.position;
         p00.y = 0;
         p11.y = 0;
-        float distThreshold = Vector3.Distance(p00, p11) / 2f;
         // Get points close to ray
-        List<Point> points = new List<Point>();
-        for (int y = 0; y < container.Height; y++)
-        {
-            for (int x = 0; x < container.Width; x++)
-            {
-                float dist = Vector3.Cross(ray.direction, container.GetPointObject(x, y).transform.position - ray.origin).magnitude;
-                if (dist < distThreshold)
-                    points.Add(container.GetPointCloudPosition(x, y));
-            }
-        }
-        // Debug.Log("Selected Points:" + points.Count);
-        // foreach (var p in points)
-        // {
-        //     Debug.Log(string.Format("({0}, {1})", p.X, p.Y));
-        // }
+        List<Point> points = AuxillaryFunctions.a(ray, cloudContainer, Vector3.Distance(p00, p11) / 2f);
+        if (points.Count == 0)
+            points = AuxillaryFunctions.a(ray, cloudContainer, Vector3.Distance(p00, p11));
         if (points.Count == 0)
             return null;
 
         // Order Points by closest to camera
-        points = points.OrderBy(o => Vector3.Distance(container.GetPointObject(o.X, o.Y).transform.position, cameraPos)).ToList();
+        points = points.OrderBy(o => Vector3.Distance(cloudContainer.GetPointObject(o.X / scalingFactor, o.Y / scalingFactor).transform.position, cameraPos)).ToList();
         xIndex = points[0].X;
         yIndex = points[0].Y;
-        return container.GetPointObject(points[0].X, points[0].Y);
+        return cloudContainer.GetPointObject(points[0].X / scalingFactor, points[0].Y / scalingFactor);
     }
 
     public void loadFile()
     {
         foreach (Transform child in pointCloudContainer.transform)
             Destroy(child.gameObject);
+        foreach (var featObj in features)
+            Destroy(featObj);
+        features = new List<GameObject>();
         pointCloud = new PointCloud(inputField.text);
         Debug.Log(String.Format("Read cloud: {0}x{1}", pointCloud.Width, pointCloud.Height));
         scalingFactor = AuxillaryFunctions.Pow(2, subsampleDropDown.value);
         drawer.DrawCloud(pointCloud, scalingFactor, pointCloudContainer.transform);
+
+        //using (System.IO.StreamWriter file = new System.IO.StreamWriter(Applicaiton.dataPath + Path.DirectorySeparatorChar + "config.dat"))
+        //{
+        //    BinaryFormatter bf = new BinaryFormatter();
+        //    bf.Serialize(file, new Config());
+        //}
     }
 
-    public void loadFeatureFile(GameObject inputField)
+    public void loadFeatureFile(GameObject[] inputField)
     {
-        string filePath = inputField.GetComponent<InputField>().text;
+        string filePath = inputField[0].GetComponent<InputField>().text;
         foreach (var featObj in features)
             Destroy(featObj);
         features = new List<GameObject>();

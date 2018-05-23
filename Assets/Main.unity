@@ -528,10 +528,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ca6275fb2b8de41a3abba02758ac530b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  filePathInputObject: {fileID: 1216310379}
+  cloudFilePathInputObject: {fileID: 1216310379}
+  featureFilePathInputObject: {fileID: 1758953654}
   subsampleDropDownObject: {fileID: 1325916075}
   pointCloudContainer: {fileID: 1175100788}
   minutiaePrefab: {fileID: 1107967810847850, guid: 36ade9245a5433046b6946ca23a1c4b6,
+    type: 2}
+  igfWidthPrefab: {fileID: 1192259930227500, guid: 85f66aced2ccdf94d93e263ea400b4f3,
+    type: 2}
+  igfHeightPrefab: {fileID: 1735726984454224, guid: f6f3a5f177482e948bcdff379d5aef52,
     type: 2}
 --- !u!20 &282840813
 Camera:
@@ -1379,7 +1384,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 282840812}
-        m_MethodName: loadFile
+        m_MethodName: LoadFile
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -1491,9 +1496,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 'IGF
-
-    Width'
+  m_Text: IGF
 --- !u!222 &1011639863
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1828,7 +1831,7 @@ GameObject:
   - component: {fileID: 1318108207}
   - component: {fileID: 1318108206}
   m_Layer: 5
-  m_Name: IGF Width
+  m_Name: IGF
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

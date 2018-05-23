@@ -1,17 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class Main : MonoBehaviour {
-    public GameObject filePathInputObject;
+public class Main : MonoBehaviour
+{
+    public GameObject cloudFilePathInputObject;
+    public GameObject featureFilePathInputObject;
     public GameObject subsampleDropDownObject;
     public GameObject pointCloudContainer;
     public GameObject minutiaePrefab;
-    private InputField inputField;
+    public GameObject igfWidthPrefab;
+    public GameObject igfHeightPrefab;
+    private InputField cloudPathField;
+    private InputField featureFilePathField;
     private Dropdown subsampleDropDown;
     private Drawer drawer;
     private RenderedCloudContainer cloudContainer;
@@ -28,10 +35,29 @@ public class Main : MonoBehaviour {
     {
         cloudContainer = pointCloudContainer.GetComponent<RenderedCloudContainer>();
         drawer = GetComponent<Drawer>();
-        inputField = filePathInputObject.GetComponent<InputField>();
+        cloudPathField = cloudFilePathInputObject.GetComponent<InputField>();
+        featureFilePathField = featureFilePathInputObject.GetComponent<InputField>();
         subsampleDropDown = subsampleDropDownObject.GetComponent<Dropdown>();
         features = new List<GameObject>();
         drawer.width = 10f;
+
+        // Load previous session's editor settings
+        string configPath = Application.dataPath + Path.DirectorySeparatorChar + "config.dat";
+        if (File.Exists(configPath))
+        {
+            try
+            {
+                using (FileStream stream = new FileStream(configPath, FileMode.Open, FileAccess.Read))
+                {
+                    BinaryFormatter bf = new BinaryFormatter();
+                    Config config = (Config)bf.Deserialize(stream);
+                    subsampleDropDown.value = config.scalingFactorPower;
+                    cloudPathField.text = config.pointCloudFilePath;
+                    featureFilePathField.text = config.featureFilePath;
+                }
+            }
+            catch (SerializationException) { }
+        }
     }
 
 	// Update is called once per frame
@@ -87,6 +113,40 @@ public class Main : MonoBehaviour {
                     features.RemoveAt(best);
                 }
             }
+            else if (tool == Tools.IGF_WIDTH)
+            {
+                GameObject point = GetPositionOnSurface(ray, pointCloud, Camera.main.transform.position, out xi, out yi, out zi);
+                if (point == null)
+                {
+                    Debug.LogWarning("Couldn't place IGF Width.");
+                    isEditing = false;
+                    return;
+                }
+                currentFeature = Instantiate(igfWidthPrefab, point.transform.position, Quaternion.identity);
+                currentFeature.transform.localScale = point.transform.localScale;
+                IgfWidth igfWidth = currentFeature.GetComponent<IgfWidth>();
+                igfWidth.startX = xi;
+                igfWidth.startY = yi;
+                igfWidth.startZ = zi;
+                features.Add(currentFeature);
+            }
+            else if (tool == Tools.IGF_HEIGHT)
+            {
+                GameObject point = GetPositionOnSurface(ray, pointCloud, Camera.main.transform.position, out xi, out yi, out zi);
+                if (point == null)
+                {
+                    Debug.LogWarning("Couldn't place IGF Height.");
+                    isEditing = false;
+                    return;
+                }
+                currentFeature = Instantiate(igfHeightPrefab, point.transform.position, Quaternion.identity);
+                currentFeature.transform.localScale = point.transform.localScale;
+                IgfHeight igfHeight = currentFeature.GetComponent<IgfHeight>();
+                igfHeight.startX = xi;
+                igfHeight.startY = yi;
+                igfHeight.startZ = zi;
+                features.Add(currentFeature);
+            }
         }
         else if (Input.GetMouseButton(0) && isEditing)
         {
@@ -96,13 +156,63 @@ public class Main : MonoBehaviour {
                 float dist = Vector3.Distance(Camera.main.transform.position, currentFeature.transform.position);
                 currentFeature.transform.LookAt(ray.GetPoint(dist));
             }
+            else if (tool == Tools.IGF_WIDTH)
+            {
+                int xi, yi;
+                float zi;
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                GameObject point = GetPositionOnSurface(ray, pointCloud, Camera.main.transform.position, out xi, out yi, out zi);
+                currentFeature.transform.LookAt(point.transform.position);
+                float scaleZ = Vector3.Distance(currentFeature.transform.position, point.transform.position) / 2.0f;
+                var scale = currentFeature.transform.localScale;
+                scale.z = scaleZ;
+                currentFeature.transform.localScale = scale;
+            }
+            else if (tool == Tools.IGF_HEIGHT)
+            {
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                float dist = Vector3.Distance(Camera.main.transform.position, currentFeature.transform.position);
+                currentFeature.transform.LookAt(ray.GetPoint(dist));
+
+                float scaleZ = Vector3.Distance(currentFeature.transform.position, ray.GetPoint(dist)) / 2.0f;
+                var scale = currentFeature.transform.localScale;
+                scale.z = scaleZ;
+                currentFeature.transform.localScale = scale;
+            }
         }
         else if (Input.GetMouseButtonUp(0) && isEditing)
         {
-            isEditing = false;
+            if (tool == Tools.IGF_WIDTH)
+            {
+                int xi, yi;
+                float zi;
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                GameObject point = GetPositionOnSurface(ray, pointCloud, Camera.main.transform.position, out xi, out yi, out zi);
+                if (point == null)
+                {
+                    Debug.LogWarning("Couldn't end IGF Width.");
+                    isEditing = false;
+                    return;
+                }
+                IgfWidth igfWidth = currentFeature.GetComponent<IgfWidth>();
+                igfWidth.endX = xi;
+                igfWidth.endY = yi;
+                igfWidth.endZ = zi;
+                features.Add(currentFeature);
+                tool = Tools.IGF_HEIGHT;
+            }
+            else if (tool == Tools.IGF_HEIGHT)
+            {
+                tool = Tools.IGF_WIDTH;
+                isEditing = false;
+            }
+            else
+            {
+                isEditing = false;
+            }
+
             currentFeature = null;
         }
-
     }
 
     private GameObject GetPositionOnSurface(Ray ray, PointCloud cloud, Vector3 cameraPos, out int xIndex, out int yIndex, out float zIndex)
@@ -129,23 +239,24 @@ public class Main : MonoBehaviour {
         return cloudContainer.GetPointObject(points[0].X / scalingFactor, points[0].Y / scalingFactor);
     }
 
-    public void loadFile()
+    public void LoadFile()
     {
         foreach (Transform child in pointCloudContainer.transform)
             Destroy(child.gameObject);
         foreach (var featObj in features)
             Destroy(featObj);
         features = new List<GameObject>();
-        pointCloud = new PointCloud(inputField.text);
+        pointCloud = new PointCloud(cloudPathField.text);
         Debug.Log(String.Format("Read cloud: {0}x{1}", pointCloud.Width, pointCloud.Height));
         scalingFactor = AuxillaryFunctions.Pow(2, subsampleDropDown.value);
         drawer.DrawCloud(pointCloud, scalingFactor, pointCloudContainer.transform);
 
-        //using (System.IO.StreamWriter file = new System.IO.StreamWriter(Applicaiton.dataPath + Path.DirectorySeparatorChar + "config.dat"))
-        //{
-        //    BinaryFormatter bf = new BinaryFormatter();
-        //    bf.Serialize(file, new Config());
-        //}
+        // Save session's editor settings for next time
+        using (FileStream stream = new FileStream(Application.dataPath + Path.DirectorySeparatorChar + "config.dat", FileMode.OpenOrCreate, FileAccess.Write))
+        {
+            BinaryFormatter bf = new BinaryFormatter();
+            bf.Serialize(stream, new Config(featureFilePathField.text, cloudPathField.text, subsampleDropDown.value));
+        }
     }
 
     public void loadFeatureFile(GameObject[] inputField)
@@ -154,7 +265,7 @@ public class Main : MonoBehaviour {
         foreach (var featObj in features)
             Destroy(featObj);
         features = new List<GameObject>();
-        using (System.IO.StreamReader file = new System.IO.StreamReader(filePath))
+        using (StreamReader file = new StreamReader(filePath))
         {
             string line;
             while ((line = file.ReadLine()) != null)
@@ -173,7 +284,6 @@ public class Main : MonoBehaviour {
                     features.Add(Instantiate(minutiaePrefab, drawer.IndexPointToWorldPoint(pointCloud, new Point(x, y, z), scalingFactor), Quaternion.Euler(α, γ, β)));
                     features[features.Count - 1].transform.localScale = cloudContainer.GetPointObject(0, 0).transform.localScale;
                 }
-
             }
         }
         Debug.Log(string.Format("Read feature file: {0} Feature(s)", features.Count));
@@ -182,7 +292,7 @@ public class Main : MonoBehaviour {
     public void saveFeatureFile(GameObject inputField)
     {
         string filePath = inputField.GetComponent<InputField>().text;
-        using (System.IO.StreamWriter file = new System.IO.StreamWriter(filePath))
+        using (StreamWriter file = new StreamWriter(filePath))
         {
             foreach (var feature in features)
             {
@@ -203,6 +313,9 @@ public class Main : MonoBehaviour {
                 break;
             case "3D Minutiae":
                 tool = (tool == Tools.MINUTIAE_3D) ? Tools.NONE : Tools.MINUTIAE_3D;
+                break;
+            case "IGF":
+                tool = (tool == Tools.IGF_WIDTH || tool == Tools.IGF_HEIGHT) ? Tools.NONE : Tools.IGF_WIDTH;
                 break;
             default:
                 throw new ArgumentException("Unknown tool: " + toolObject.name);
